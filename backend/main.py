@@ -219,15 +219,6 @@ Produce a concise JSON summary with exactly these three fields:
 
 Return ONLY valid JSON in this exact shape, no markdown fences, no commentary:
 {"asked_for": "...", "conceded": "...", "redlined_clause": "..."}
-
-ORIGINAL CLAUSE:
-"{clause_text}"
-
-WHY THE SIGNER CONSIDERED IT RISKY:
-{risk_reason}
-
-NEGOTIATION TRANSCRIPT:
-{transcript}
 """
 
 
@@ -245,10 +236,11 @@ async def deal_summary(body: dict):
         f"{'Signer' if m.get('role') == 'user' else 'Counterparty'}: {m.get('content', '')}"
         for m in history
     )
-    prompt = DEAL_SUMMARY_PROMPT.format(
-        clause_text=clause.get("clause_text", ""),
-        risk_reason=clause.get("risk_reason", ""),
-        transcript=transcript,
+    prompt = (
+        DEAL_SUMMARY_PROMPT
+        + f"\n\nORIGINAL CLAUSE:\n\"{clause.get('clause_text', '')}\"\n\n"
+        + f"WHY THE SIGNER CONSIDERED IT RISKY:\n{clause.get('risk_reason', '')}\n\n"
+        + f"NEGOTIATION TRANSCRIPT:\n{transcript}"
     )
 
     response = client.models.generate_content(
