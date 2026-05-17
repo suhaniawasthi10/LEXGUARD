@@ -75,6 +75,28 @@
 .primary:hover:not(:disabled) { opacity: 0.88; }
 .primary:disabled { opacity: 0.45; cursor: not-allowed; }
 
+.sample-row {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+}
+.link-btn {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--border-strong);
+}
+.link-btn:hover:not(:disabled) {
+  color: var(--text);
+  text-decoration-color: var(--text);
+}
+.link-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .error {
   margin-top: 16px;
   padding: 10px 14px;

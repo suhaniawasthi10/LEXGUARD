@@ -22,12 +22,12 @@ export default function App() {
     )
   }, [result])
 
-  async function analyze() {
-    if (!file) { setError('Choose a PDF or DOCX first.'); return }
+  async function analyzeFile(target) {
+    if (!target) { setError('Choose a PDF or DOCX first.'); return }
     setError(''); setResult(null); setLoading(true)
     try {
       const fd = new FormData()
-      fd.append('file', file)
+      fd.append('file', target)
       const res = await fetch(`${API_URL}/analyze`, { method: 'POST', body: fd })
       if (!res.ok) {
         const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
@@ -38,6 +38,24 @@ export default function App() {
       setError(String(e.message || e))
     } finally {
       setLoading(false)
+    }
+  }
+
+  function analyze() { return analyzeFile(file) }
+
+  async function loadSample() {
+    setError('')
+    try {
+      const res = await fetch('/sample-employment.docx')
+      if (!res.ok) throw new Error('Could not load the sample contract.')
+      const blob = await res.blob()
+      const sampleFile = new File([blob], 'sample-employment.docx', {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      })
+      setFile(sampleFile)
+      await analyzeFile(sampleFile)
+    } catch (e) {
+      setError(String(e.message || e))
     }
   }
 
@@ -166,6 +184,12 @@ export default function App() {
           {loading ? 'Analyzing…' : 'Analyze'}
         </button>
       </section>
+
+      <div className="sample-row">
+        <button className="link-btn" onClick={loadSample} disabled={loading}>
+          Try a sample contract
+        </button>
+      </div>
 
       {error && <div className="error">{error}</div>}
 
