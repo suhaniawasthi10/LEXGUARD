@@ -82,6 +82,7 @@ def call_analyzer(text: str) -> dict:
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
             temperature=0.2,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         ),
     )
     try:
@@ -200,6 +201,7 @@ async def negotiate(body: dict):
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
             temperature=0.8,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         ),
     )
     return {"reply": (response.text or "").strip()}
@@ -249,6 +251,7 @@ async def deal_summary(body: dict):
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
             temperature=0.3,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         ),
     )
     try:
