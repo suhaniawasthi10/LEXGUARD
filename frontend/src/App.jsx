@@ -13,6 +13,7 @@ export default function App() {
   const [negotiation, setNegotiation] = useState(null)
   const [draft, setDraft] = useState('')
   const threadRef = useRef(null)
+  const summaryRef = useRef(null)
 
   const sortedClauses = useMemo(() => {
     if (!result?.clauses) return []
@@ -128,7 +129,13 @@ export default function App() {
     if (threadRef.current) {
       threadRef.current.scrollTop = threadRef.current.scrollHeight
     }
-  }, [negotiation?.history?.length, negotiation?.pending, negotiation?.summary])
+  }, [negotiation?.history?.length, negotiation?.pending])
+
+  useEffect(() => {
+    if (negotiation?.summary && summaryRef.current) {
+      summaryRef.current.scrollTop = 0
+    }
+  }, [negotiation?.summary])
 
   useEffect(() => {
     if (!negotiation) return
@@ -204,53 +211,55 @@ export default function App() {
           <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
             <header className="modal-head">
               <div className="modal-head-text">
-                <div className="cat">Negotiating · {(negotiation.clause.category || 'other').replace('_', ' ')}</div>
+                <div className="cat">Negotiating</div>
                 <p className="modal-clause">{negotiation.clause.clause_text}</p>
               </div>
               <button className="close" onClick={closeNegotiation} aria-label="Close">×</button>
             </header>
 
-            <div className="thread" ref={threadRef}>
-              {negotiation.history.length === 0 && (
-                <p className="thread-empty">Push back on this clause. The counterparty will reply in character.</p>
-              )}
-              {negotiation.history.map((m, i) => (
-                <div key={i} className={`msg ${m.role === 'user' ? 'msg-user' : 'msg-other'}`}>
-                  <div className="msg-role">{m.role === 'user' ? 'You' : 'Counterparty'}</div>
-                  <div className="msg-body">{m.content}</div>
-                </div>
-              ))}
-              {negotiation.pending && (
-                <div className="msg msg-other">
-                  <div className="msg-role">Counterparty</div>
-                  <div className="msg-body thinking">Thinking…</div>
-                </div>
-              )}
-              {negotiation.error && <div className="thread-error">{negotiation.error}</div>}
-            </div>
-
             {negotiation.summary ? (
-              <div className="summary-card">
-                <div className="summary-title">Negotiation summary</div>
-                <div className="summary-row">
-                  <span className="summary-label">You asked for</span>
-                  <p className="summary-text">{negotiation.summary.asked_for}</p>
-                </div>
-                <div className="summary-row">
-                  <span className="summary-label">Counterparty conceded</span>
-                  <p className="summary-text">{negotiation.summary.conceded}</p>
-                </div>
-                <div className="summary-row">
-                  <span className="summary-label">Original clause</span>
-                  <blockquote className="summary-quote orig">{negotiation.clause.clause_text}</blockquote>
-                </div>
-                <div className="summary-row">
-                  <span className="summary-label">Redlined clause</span>
-                  <blockquote className="summary-quote redlined">{negotiation.summary.redlined_clause}</blockquote>
+              <div className="summary-scroll" ref={summaryRef}>
+                <div className="summary-card">
+                  <div className="summary-title">Negotiation summary</div>
+                  <div className="summary-row">
+                    <span className="summary-label">You asked for</span>
+                    <p className="summary-text">{negotiation.summary.asked_for}</p>
+                  </div>
+                  <div className="summary-row">
+                    <span className="summary-label">Counterparty conceded</span>
+                    <p className="summary-text">{negotiation.summary.conceded}</p>
+                  </div>
+                  <div className="summary-row">
+                    <span className="summary-label">Original clause</span>
+                    <blockquote className="summary-quote orig">{negotiation.clause.clause_text}</blockquote>
+                  </div>
+                  <div className="summary-row">
+                    <span className="summary-label">Redlined clause</span>
+                    <blockquote className="summary-quote redlined">{negotiation.summary.redlined_clause}</blockquote>
+                  </div>
                 </div>
               </div>
             ) : (
               <>
+                <div className="thread" ref={threadRef}>
+                  {negotiation.history.length === 0 && (
+                    <p className="thread-empty">Push back on this clause. The counterparty will reply in character.</p>
+                  )}
+                  {negotiation.history.map((m, i) => (
+                    <div key={i} className={`msg ${m.role === 'user' ? 'msg-user' : 'msg-other'}`}>
+                      <div className="msg-role">{m.role === 'user' ? 'You' : 'Counterparty'}</div>
+                      <div className="msg-body">{m.content}</div>
+                    </div>
+                  ))}
+                  {negotiation.pending && (
+                    <div className="msg msg-other">
+                      <div className="msg-role">Counterparty</div>
+                      <div className="msg-body thinking">Thinking…</div>
+                    </div>
+                  )}
+                  {negotiation.error && <div className="thread-error">{negotiation.error}</div>}
+                </div>
+
                 {negotiation.history.length >= 2 && !negotiation.pending && (
                   <div className="end-row">
                     <button

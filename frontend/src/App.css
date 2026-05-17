@@ -352,13 +352,18 @@
   font-size: 12px;
 }
 
-.summary-card {
-  padding: 18px 20px 8px;
+.summary-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--bg);
   border-top: 1px solid var(--border);
+}
+.summary-card {
+  padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  background: var(--bg);
 }
 .summary-title {
   font-size: 11px;
