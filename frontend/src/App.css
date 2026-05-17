@@ -340,3 +340,65 @@
   color: var(--text-muted);
   text-align: center;
 }
+
+.end-row {
+  padding: 0 20px 4px;
+  display: flex;
+  justify-content: flex-end;
+}
+.end-btn {
+  margin-top: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.summary-card {
+  padding: 18px 20px 8px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--bg);
+}
+.summary-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.summary-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.summary-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.summary-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.summary-quote {
+  margin: 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--border-strong);
+  background: var(--surface);
+  border-radius: 0 4px 4px 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text);
+}
+.summary-quote.orig {
+  color: var(--text-muted);
+  border-left-color: var(--border-strong);
+}
+.summary-quote.redlined {
+  border-left-color: var(--sev-green);
+}

@@ -47,6 +47,8 @@ export default function App() {
       history: [],
       pending: false,
       error: '',
+      summary: null,
+      summarizing: false,
     })
     setDraft('')
   }
@@ -94,11 +96,39 @@ export default function App() {
     }
   }
 
+  async function endNegotiation() {
+    if (!negotiation || negotiation.summarizing || negotiation.summary) return
+    setNegotiation({ ...negotiation, summarizing: true, error: '' })
+    try {
+      const res = await fetch(`${API_URL}/deal-summary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          doc_type: negotiation.doc_type,
+          clause: {
+            category: negotiation.clause.category,
+            clause_text: negotiation.clause.clause_text,
+            risk_reason: negotiation.clause.risk_reason,
+          },
+          history: negotiation.history,
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
+        throw new Error(body.detail || `HTTP ${res.status}`)
+      }
+      const summary = await res.json()
+      setNegotiation((n) => n ? { ...n, summary, summarizing: false } : null)
+    } catch (err) {
+      setNegotiation((n) => n ? { ...n, summarizing: false, error: String(err.message || err) } : null)
+    }
+  }
+
   useEffect(() => {
     if (threadRef.current) {
       threadRef.current.scrollTop = threadRef.current.scrollHeight
     }
-  }, [negotiation?.history?.length, negotiation?.pending])
+  }, [negotiation?.history?.length, negotiation?.pending, negotiation?.summary])
 
   useEffect(() => {
     if (!negotiation) return
@@ -199,19 +229,54 @@ export default function App() {
               {negotiation.error && <div className="thread-error">{negotiation.error}</div>}
             </div>
 
-            <form className="composer" onSubmit={sendTurn}>
-              <input
-                type="text"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder="Type your pushback…"
-                disabled={negotiation.pending}
-                autoFocus
-              />
-              <button type="submit" className="primary" disabled={negotiation.pending || !draft.trim()}>
-                Send
-              </button>
-            </form>
+            {negotiation.summary ? (
+              <div className="summary-card">
+                <div className="summary-title">Negotiation summary</div>
+                <div className="summary-row">
+                  <span className="summary-label">You asked for</span>
+                  <p className="summary-text">{negotiation.summary.asked_for}</p>
+                </div>
+                <div className="summary-row">
+                  <span className="summary-label">Counterparty conceded</span>
+                  <p className="summary-text">{negotiation.summary.conceded}</p>
+                </div>
+                <div className="summary-row">
+                  <span className="summary-label">Original clause</span>
+                  <blockquote className="summary-quote orig">{negotiation.clause.clause_text}</blockquote>
+                </div>
+                <div className="summary-row">
+                  <span className="summary-label">Redlined clause</span>
+                  <blockquote className="summary-quote redlined">{negotiation.summary.redlined_clause}</blockquote>
+                </div>
+              </div>
+            ) : (
+              <>
+                {negotiation.history.length >= 2 && !negotiation.pending && (
+                  <div className="end-row">
+                    <button
+                      className="ghost end-btn"
+                      onClick={endNegotiation}
+                      disabled={negotiation.summarizing}
+                    >
+                      {negotiation.summarizing ? 'Generating summary…' : 'End negotiation'}
+                    </button>
+                  </div>
+                )}
+                <form className="composer" onSubmit={sendTurn}>
+                  <input
+                    type="text"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    placeholder="Type your pushback…"
+                    disabled={negotiation.pending || negotiation.summarizing}
+                    autoFocus
+                  />
+                  <button type="submit" className="primary" disabled={negotiation.pending || negotiation.summarizing || !draft.trim()}>
+                    Send
+                  </button>
+                </form>
+              </>
+            )}
 
             <p className="modal-disclaimer">Simulated negotiation — not legal advice.</p>
           </div>

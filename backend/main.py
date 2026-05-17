@@ -203,3 +203,63 @@ async def negotiate(body: dict):
         ),
     )
     return {"reply": (response.text or "").strip()}
+
+
+DEAL_SUMMARY_PROMPT = """You are summarizing the negotiation that just took place between the signer of a contract and the counterparty who drafted it.
+
+You are given:
+- The original clause that was being negotiated
+- Why the signer considered it risky
+- The full transcript of the back-and-forth
+
+Produce a concise JSON summary with exactly these three fields:
+- "asked_for": 1-2 sentences describing what the signer pushed for across the whole conversation (the substantive asks, not turn-by-turn).
+- "conceded": 1-2 sentences describing what the counterparty actually agreed to. Concessions only. If they conceded nothing, say so honestly (e.g. "The counterparty did not concede on any material point.").
+- "redlined_clause": the rewritten clause text that reflects the concessions the signer actually won. Preserve the formal contract tone (third person, defined terms like "Employee" and "Company" if present in the original). If nothing was conceded, return the original clause text unchanged.
+
+Return ONLY valid JSON in this exact shape, no markdown fences, no commentary:
+{"asked_for": "...", "conceded": "...", "redlined_clause": "..."}
+
+ORIGINAL CLAUSE:
+"{clause_text}"
+
+WHY THE SIGNER CONSIDERED IT RISKY:
+{risk_reason}
+
+NEGOTIATION TRANSCRIPT:
+{transcript}
+"""
+
+
+@app.post("/deal-summary")
+async def deal_summary(body: dict):
+    if client is None:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured on server.")
+
+    clause = body.get("clause") or {}
+    history = body.get("history") or []
+    if not history:
+        raise HTTPException(status_code=400, detail="No negotiation history to summarize.")
+
+    transcript = "\n\n".join(
+        f"{'Signer' if m.get('role') == 'user' else 'Counterparty'}: {m.get('content', '')}"
+        for m in history
+    )
+    prompt = DEAL_SUMMARY_PROMPT.format(
+        clause_text=clause.get("clause_text", ""),
+        risk_reason=clause.get("risk_reason", ""),
+        transcript=transcript,
+    )
+
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            temperature=0.3,
+        ),
+    )
+    try:
+        return json.loads(response.text)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=502, detail="Model returned invalid JSON.")
