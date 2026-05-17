@@ -119,7 +119,87 @@ async def analyze(file: UploadFile = File(...)):
     }
 
 
+COUNTERPARTY_ROLES = {
+    "employment": (
+        "You are a hiring manager representing the employer in this negotiation. "
+        "You stand by the employment contract your company drafted and want to keep terms favorable to the company, "
+        "while not losing a candidate you actually want to hire."
+    ),
+    "rental": (
+        "You are the landlord (or the landlord's property manager). "
+        "You stand by the lease as written and want to keep terms favorable to the property owner, "
+        "while still closing the deal with this prospective tenant."
+    ),
+    "vendor": (
+        "You are the vendor's account manager. "
+        "You stand by the contract your company drafted and want to keep terms favorable to your business, "
+        "while not losing this customer."
+    ),
+    "tos": (
+        "You are a policy lead for the platform that wrote these Terms of Service. "
+        "You stand by the current terms and want to keep them favorable to the platform, "
+        "while addressing this user's concern."
+    ),
+    "privacy": (
+        "You are a data protection lead for the company that wrote this privacy policy. "
+        "You stand by the current policy and want to preserve flexibility for the company, "
+        "while addressing this user's concern."
+    ),
+    "other": (
+        "You are the counterparty who drafted this contract. "
+        "You stand by the current terms and want to keep them favorable to your side, "
+        "while still reaching agreement."
+    ),
+}
+
+NEGOTIATION_RULES = """You are negotiating ONE specific clause with the person being asked to sign this contract.
+
+Stay fully in character as the counterparty. Speak in first person. Do NOT prefix replies with labels like "Counterparty:" or "Me:". Do NOT narrate ("*leans back*"). Do NOT acknowledge that you are an AI.
+
+Negotiate realistically:
+- Defend the clause as the other party would defend it.
+- If the user makes a fair, reasonable argument, concede small ground.
+- If the user is aggressive or makes an unrealistic demand, push back.
+- Hold firm on things a real counterparty would never give up.
+- Keep replies short: 2-4 sentences, conversational, plain language — not a legal brief."""
+
+
 @app.post("/negotiate")
 async def negotiate(body: dict):
-    # Phase 0 stub. Real Gemini call lands in Phase 2.
-    return {"reply": "I hear your concern, but this clause reflects standard practice across our industry."}
+    if client is None:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured on server.")
+
+    doc_type = (body.get("doc_type") or "other").lower()
+    clause = body.get("clause") or {}
+    history = body.get("history") or []
+
+    role = COUNTERPARTY_ROLES.get(doc_type, COUNTERPARTY_ROLES["other"])
+    clause_context = (
+        f"The clause under negotiation (category: {clause.get('category', 'other')}):\n"
+        f"\"{clause.get('clause_text', '')}\"\n\n"
+        f"The other side considers it risky because: {clause.get('risk_reason', '')}"
+    )
+    system_instruction = f"{role}\n\n{NEGOTIATION_RULES}\n\n{clause_context}"
+
+    if not history:
+        contents = [{
+            "role": "user",
+            "parts": [{"text": "(I have just opened the negotiation on this clause. Greet me briefly in character and invite me to raise my concern.)"}],
+        }]
+    else:
+        contents = []
+        for msg in history:
+            role_name = "user" if msg.get("role") == "user" else "model"
+            contents.append({"role": role_name, "parts": [{"text": msg.get("content", "")}]})
+        if contents[-1]["role"] != "user":
+            contents.append({"role": "user", "parts": [{"text": "(continue)"}]})
+
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=contents,
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            temperature=0.8,
+        ),
+    )
+    return {"reply": (response.text or "").strip()}
