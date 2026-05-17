@@ -169,24 +169,35 @@ export default function App() {
         <p className="subtitle">Contract risk analysis with live counterparty simulation.</p>
       </header>
 
-      <section className="upload">
+      <section className="upload" aria-label="Upload contract for analysis">
         <label className="file-picker">
           <input
             type="file"
             accept=".pdf,.docx"
+            aria-label="Upload a PDF or DOCX contract"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
           <span className={file ? 'file-name' : 'file-empty'}>
             {file ? file.name : 'Choose a PDF or DOCX'}
           </span>
         </label>
-        <button className="primary" onClick={analyze} disabled={loading || !file}>
+        <button
+          className="primary"
+          onClick={analyze}
+          disabled={loading || !file}
+          aria-label="Analyze the selected contract"
+        >
           {loading ? 'Analyzing…' : 'Analyze'}
         </button>
       </section>
 
       <div className="sample-row">
-        <button className="link-btn" onClick={loadSample} disabled={loading}>
+        <button
+          className="link-btn"
+          onClick={loadSample}
+          disabled={loading}
+          aria-label="Load and analyze a bundled sample employment contract"
+        >
           Try a sample contract
         </button>
       </div>
@@ -217,7 +228,11 @@ export default function App() {
                   <blockquote>{c.clause_text}</blockquote>
                   <p className="reason"><span className="reason-label">Why it matters.</span> {c.risk_reason}</p>
                   {c.severity === 'red' && (
-                    <button className="ghost" onClick={() => openNegotiation(c)}>
+                    <button
+                      className="ghost"
+                      onClick={() => openNegotiation(c)}
+                      aria-label={`Open negotiation for the ${(c.category || 'other').replace('_', ' ')} clause`}
+                    >
                       Negotiate this clause
                     </button>
                   )}
@@ -231,14 +246,24 @@ export default function App() {
       <footer className="footer">Simulated negotiation — not legal advice.</footer>
 
       {negotiation && (
-        <div className="modal" onClick={closeNegotiation}>
+        <div
+          className="modal"
+          onClick={closeNegotiation}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="negotiation-title"
+        >
           <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
             <header className="modal-head">
               <div className="modal-head-text">
-                <div className="cat">Negotiating</div>
+                <div className="cat" id="negotiation-title">Negotiating</div>
                 <p className="modal-clause">{negotiation.clause.clause_text}</p>
               </div>
-              <button className="close" onClick={closeNegotiation} aria-label="Close">×</button>
+              <button
+                className="close"
+                onClick={closeNegotiation}
+                aria-label="Close negotiation"
+              >×</button>
             </header>
 
             {negotiation.summary ? (
@@ -290,21 +315,28 @@ export default function App() {
                       className="ghost end-btn"
                       onClick={endNegotiation}
                       disabled={negotiation.summarizing}
+                      aria-label="End negotiation and generate the deal summary"
                     >
                       {negotiation.summarizing ? 'Generating summary…' : 'End negotiation'}
                     </button>
                   </div>
                 )}
-                <form className="composer" onSubmit={sendTurn}>
+                <form className="composer" onSubmit={sendTurn} aria-label="Negotiation reply">
                   <input
                     type="text"
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     placeholder="Type your pushback…"
+                    aria-label="Your pushback message to the counterparty"
                     disabled={negotiation.pending || negotiation.summarizing}
                     autoFocus
                   />
-                  <button type="submit" className="primary" disabled={negotiation.pending || negotiation.summarizing || !draft.trim()}>
+                  <button
+                    type="submit"
+                    className="primary"
+                    disabled={negotiation.pending || negotiation.summarizing || !draft.trim()}
+                    aria-label="Send your pushback message"
+                  >
                     Send
                   </button>
                 </form>

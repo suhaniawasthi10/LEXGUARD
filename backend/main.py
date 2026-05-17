@@ -1,3 +1,19 @@
+"""LexGuard backend — FastAPI service.
+
+Three endpoints, all powered by Google Gemini 2.5 Flash via the
+google-genai SDK:
+
+    GEMINI CALL #1  POST /analyze        clause extraction + classification (JSON mode)
+    GEMINI CALL #2  POST /negotiate      in-character counterparty, multi-turn
+    GEMINI CALL #3  POST /deal-summary   asked / conceded / redlined clause (JSON mode)
+
+The risk score and red-flag count are computed deterministically in
+Python (see compute_score) so the same set of classifications always
+produces the same score. The server is stateless: the negotiation
+transcript lives on the client and is sent in full with every turn.
+"""
+from __future__ import annotations
+
 import io
 import json
 import os
@@ -7,11 +23,21 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import pdfplumber
 from docx import Document
+
+# --- Google Gemini integration --------------------------------------------
+# The official Google AI SDK. The Gemini 2.5 Flash model is invoked from
+# three places in this file: call_analyzer (clause extraction), the
+# /negotiate endpoint (in-character counterparty), and the /deal-summary
+# endpoint (redlined clause summary).
 from google import genai
 from google.genai import types
 
-app = FastAPI()
+app = FastAPI(title="LexGuard API")
 
+# CORS is intentionally permissive (`*`) for the hackathon demo so the
+# Vercel-hosted frontend and any judge's tooling can reach the API
+# directly without an origin allow-list. A production deployment would
+# narrow `allow_origins` to the real frontend domain(s).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,17 +46,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# The Gemini API key is read from the environment only — never hardcoded
+# and never logged. On Railway it is supplied via the GEMINI_API_KEY
+# variable. If the key is missing, the LLM-backed endpoints return a
+# clear 500 instead of crashing at import time.
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 MODEL = "gemini-2.5-flash"
 
 
 @app.get("/health")
-def health():
+def health() -> dict:
+    """Liveness probe.
+
+    Returns a stable JSON shape used by deploy platforms and the test
+    suite to confirm the process is up. The `gemini_configured` flag
+    tells operators whether the LLM-backed endpoints will function,
+    without ever revealing the key itself.
+    """
     return {"status": "ok", "gemini_configured": bool(GEMINI_API_KEY)}
 
 
 def extract_text(filename: str, data: bytes) -> str:
+    """Extract plain text from an uploaded contract.
+
+    Args:
+        filename: Original filename. Used only to dispatch by extension.
+        data: Raw file bytes.
+
+    Returns:
+        The extracted text, stripped of leading/trailing whitespace.
+
+    Raises:
+        HTTPException(400): If the extension is not .pdf or .docx.
+    """
     name = (filename or "").lower()
     if name.endswith(".pdf"):
         parts = []
@@ -74,8 +123,19 @@ CONTRACT TEXT:
 
 
 def call_analyzer(text: str) -> dict:
+    """GEMINI CALL #1 — clause extraction + classification.
+
+    Sends the contract text to gemini-2.5-flash in strict JSON mode with
+    a low temperature for stable classification. Returns the parsed
+    JSON document containing doc_type and clauses.
+
+    Raises:
+        HTTPException(500): If GEMINI_API_KEY is not configured.
+        HTTPException(502): If the model returns non-JSON output.
+    """
     if client is None:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured on server.")
+    # Google Gemini 2.5 Flash — analyzer call.
     response = client.models.generate_content(
         model=MODEL,
         contents=ANALYZER_PROMPT + text,
@@ -91,10 +151,25 @@ def call_analyzer(text: str) -> dict:
         raise HTTPException(status_code=502, detail="Model returned invalid JSON.")
 
 
+# The single source of truth for the risk-scoring rubric. Kept as a
+# module constant so tests can assert against it.
 SEVERITY_WEIGHTS = {"red": 25, "amber": 10, "green": 0}
 
 
 def compute_score(clauses: list[dict]) -> tuple[int, int]:
+    """Compute overall risk score and red-flag count from classified clauses.
+
+    Deterministic by design: the LLM does classification, Python does
+    arithmetic. The same clause list always produces the same score.
+
+    Args:
+        clauses: Iterable of clause dicts each carrying a "severity" key
+            with value "red", "amber", or "green".
+
+    Returns:
+        A (score, red_count) tuple where `score` is the severity-weighted
+        total capped at 100, and `red_count` is the number of red clauses.
+    """
     score = sum(SEVERITY_WEIGHTS.get(c.get("severity", ""), 0) for c in clauses)
     score = min(score, 100)
     red_count = sum(1 for c in clauses if c.get("severity") == "red")
@@ -102,7 +177,18 @@ def compute_score(clauses: list[dict]) -> tuple[int, int]:
 
 
 @app.post("/analyze")
-async def analyze(file: UploadFile = File(...)):
+async def analyze(file: UploadFile = File(...)) -> dict:
+    """Analyze an uploaded PDF or DOCX contract.
+
+    Pipeline: read bytes -> extract_text -> Gemini call #1 -> compute_score.
+
+    Args:
+        file: A PDF or DOCX upload (multipart/form-data, field name "file").
+
+    Returns:
+        The frozen JSON contract: doc_type, overall_risk_score,
+        red_flag_count, clauses[].
+    """
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Empty file.")
@@ -120,6 +206,9 @@ async def analyze(file: UploadFile = File(...)):
     }
 
 
+# Counterparty personas indexed by document type. The /negotiate endpoint
+# picks one of these to seed the Gemini system instruction, so the
+# in-character reply matches who would actually have drafted the contract.
 COUNTERPARTY_ROLES = {
     "employment": (
         "You are a hiring manager representing the employer in this negotiation. "
@@ -166,7 +255,18 @@ Negotiate realistically:
 
 
 @app.post("/negotiate")
-async def negotiate(body: dict):
+async def negotiate(body: dict) -> dict:
+    """GEMINI CALL #2 — in-character counterparty, multi-turn.
+
+    Args:
+        body: JSON object with keys:
+            doc_type: which counterparty persona to assume.
+            clause: dict with category, clause_text, risk_reason.
+            history: ordered list of {role: 'user'|'counterparty', content}.
+
+    Returns:
+        {"reply": "..."} — one new counterparty message.
+    """
     if client is None:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured on server.")
 
@@ -190,11 +290,13 @@ async def negotiate(body: dict):
     else:
         contents = []
         for msg in history:
+            # Map our (user/counterparty) roles to Gemini's (user/model).
             role_name = "user" if msg.get("role") == "user" else "model"
             contents.append({"role": role_name, "parts": [{"text": msg.get("content", "")}]})
         if contents[-1]["role"] != "user":
             contents.append({"role": "user", "parts": [{"text": "(continue)"}]})
 
+    # Google Gemini 2.5 Flash — negotiation call.
     response = client.models.generate_content(
         model=MODEL,
         contents=contents,
@@ -225,7 +327,16 @@ Return ONLY valid JSON in this exact shape, no markdown fences, no commentary:
 
 
 @app.post("/deal-summary")
-async def deal_summary(body: dict):
+async def deal_summary(body: dict) -> dict:
+    """GEMINI CALL #3 — produce the deal summary.
+
+    Args:
+        body: JSON with `clause` (category, clause_text, risk_reason) and
+            `history` (the full negotiation transcript).
+
+    Returns:
+        JSON with keys asked_for, conceded, redlined_clause.
+    """
     if client is None:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured on server.")
 
@@ -245,6 +356,7 @@ async def deal_summary(body: dict):
         + f"NEGOTIATION TRANSCRIPT:\n{transcript}"
     )
 
+    # Google Gemini 2.5 Flash — deal-summary call.
     response = client.models.generate_content(
         model=MODEL,
         contents=prompt,

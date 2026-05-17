@@ -52,9 +52,32 @@ The brief explicitly notes teams may use Google proprietary AI models — LexGua
 | DOCX parsing | `python-docx` | Standard. |
 | State | None on the server. Negotiation transcript lives in the client. | Deliberately stateless: no database, no auth, no vector store. |
 
+## Google Gemini — the AI engine
+
+LexGuard is powered end-to-end by **Google Gemini 2.5 Flash** (`gemini-2.5-flash`), accessed via the official `google-genai` Python SDK using a Google AI Studio API key.
+
+Three distinct Gemini calls drive the product:
+
+| # | Endpoint | Gemini role | Mode |
+|---|---|---|---|
+| 1 | `POST /analyze` | Clause extraction + classification + severity scoring | Structured output (`response_mime_type="application/json"`), `temperature=0.2` |
+| 2 | `POST /negotiate` | In-character counterparty (employer / landlord / vendor / etc.), multi-turn | Free-form text, `temperature=0.8`, role passed via `system_instruction` |
+| 3 | `POST /deal-summary` | Asked / conceded / redlined-clause summary of the just-finished negotiation | Structured output (`response_mime_type="application/json"`), `temperature=0.3` |
+
+All three calls disable Gemini 2.5's hidden "thinking" budget (`thinking_config=ThinkingConfig(thinking_budget=0)`) for fast interactive latency. The full contract fits in Gemini's context window in one shot, so there is no chunking, no retrieval, and no vector store — the model reasons over the whole document at once.
+
 ## Architecture and methodology
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system architecture, the three AI workflows, the frozen JSON contract, scoring methodology, and design rationale (including what was deliberately *not* built and why).
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system architecture, the three AI workflows in detail, the frozen JSON contract, scoring methodology, and design rationale (including what was deliberately *not* built and why).
+
+## Tests
+
+The backend has a pytest suite covering the deterministic logic and the API boundaries, with all Gemini calls mocked so the suite runs offline.
+
+```
+cd backend
+pytest tests/
+```
 
 ## Local development
 

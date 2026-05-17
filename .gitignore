@@ -18,3 +18,9 @@ frontend/.vite/
 
 # Logs
 *.log
+
+# Local IDE / agent state
+.claude/
+
+# pytest
+backend/.pytest_cache/
